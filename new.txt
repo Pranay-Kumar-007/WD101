@@ -1,6 +1,4 @@
-I see the issue. The page has loaded but the code needs to scroll within the **iframe's content area** to find the Schema Definition section. Looking at your screenshot, I can see the page is showing the "Request Parameters" section, but we need to scroll down further to reach "Schema Definition."
-
-Here's a revised version that should work better:
+Perfect! You need to zoom out the page first. Here's the updated code that sets the zoom to 50%:
 
 ```python
 from selenium import webdriver
@@ -28,11 +26,15 @@ try:
     driver.switch_to.frame(iframe)
     time.sleep(2)
 
-    # Find the main scrollable content area (the center panel with API docs)
+    # Zoom out to 50% to make more content visible
+    print("Zooming out to 50%...")
+    driver.execute_script("document.body.style.zoom='50%'")
+    time.sleep(2)  # Wait for zoom to apply
+
+    # Find the main scrollable content area
     print("Finding scrollable content area...")
     scroll_container = None
     
-    # Try different selectors for the scrollable area
     selectors = [
         "div.api-content",
         "div[class*='ps']",
@@ -49,14 +51,9 @@ try:
         except:
             continue
     
-    # If no specific container found, use the body or a general div
     if not scroll_container:
-        try:
-            scroll_container = driver.find_element(By.TAG_NAME, "body")
-            print("Using body as scroll container")
-        except:
-            # Last resort: find any scrollable div
-            scroll_container = driver.find_element(By.XPATH, "//div[@style[contains(., 'overflow')]]")
+        scroll_container = driver.find_element(By.TAG_NAME, "body")
+        print("Using body as scroll container")
 
     # Scroll down to find Schema Definition
     print("Scrolling to find Schema Definition...")
@@ -68,7 +65,7 @@ try:
         try:
             schema_element = driver.find_element(
                 By.XPATH, 
-                "//button[contains(text(), 'Schema Definition')] | //h3[contains(text(), 'Schema Definition')] | //h4[contains(text(), 'Schema Definition')]"
+                "//button[contains(text(), 'Schema Definition')] | //h3[contains(text(), 'Schema Definition')] | //h4[contains(text(), 'Schema Definition')] | //*[contains(text(), 'Schema Definition')]"
             )
             
             if schema_element.is_displayed():
@@ -86,13 +83,13 @@ try:
         except NoSuchElementException:
             pass
         
-        # Scroll using JavaScript - scroll the window/body
-        driver.execute_script("window.scrollBy(0, 400);")
-        time.sleep(0.3)
+        # Scroll using JavaScript
+        driver.execute_script("window.scrollBy(0, 500);")
+        time.sleep(0.2)
         
-        # Also try scrolling the container if found
+        # Also scroll the container if found
         if scroll_container:
-            driver.execute_script("arguments[0].scrollTop += 400;", scroll_container)
+            driver.execute_script("arguments[0].scrollTop += 500;", scroll_container)
         
         # Check if we've reached the bottom
         at_bottom = driver.execute_script(
@@ -100,29 +97,38 @@ try:
         )
         if at_bottom:
             print("Reached bottom of page")
-            # Try one more time to find the element
             try:
                 schema_element = driver.find_element(
                     By.XPATH, 
-                    "//button[contains(text(), 'Schema Definition')] | //*[contains(text(), 'Schema Definition')]"
+                    "//*[contains(text(), 'Schema Definition')]"
                 )
                 schema_found = True
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
+                    schema_element
+                )
+                time.sleep(1)
                 break
             except:
                 pass
             break
 
     if not schema_found:
-        print("Schema Definition not found. Taking full page screenshot for debugging...")
-        driver.save_screenshot("debug_full_page.png")
+        print("Schema Definition not found. Taking debug screenshot...")
+        driver.save_screenshot("debug_zoomed_out.png")
         raise Exception("Could not find Schema Definition section!")
 
     # Click to expand if it's a button/accordion
     try:
         if schema_element.tag_name == "button":
             print("Clicking Schema Definition button...")
-            schema_element.click()
-            time.sleep(1.5)
+            # Try regular click first
+            try:
+                schema_element.click()
+            except:
+                # Fallback to JavaScript click
+                driver.execute_script("arguments[0].click();", schema_element)
+            time.sleep(2)
     except Exception as e:
         print(f"Element might not be clickable or already expanded: {e}")
 
@@ -132,30 +138,36 @@ try:
     
     # Try multiple ways to find the schema content
     content_selectors = [
-        "//button[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'accordion')][1]",
+        "//button[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'accordion-body')][1]",
         "//button[contains(text(), 'Schema Definition')]/parent::*/following-sibling::div[1]",
-        "//*[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'model-box')][1]",
-        "//*[contains(text(), 'Schema Definition')]/following::div[1]"
+        "//*[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'model')][1]",
+        "//*[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock-section')][1]",
+        "//button[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock')][1]"
     ]
     
     for selector in content_selectors:
         try:
             schema_content = driver.find_element(By.XPATH, selector)
-            if schema_content.is_displayed():
+            if schema_content.is_displayed() and schema_content.size['height'] > 50:
                 print(f"Found schema content with selector: {selector}")
                 break
         except:
             continue
     
     if not schema_content:
-        # If still not found, try to get a larger area around the Schema Definition
+        # If still not found, use the schema element's parent container
         schema_content = driver.find_element(
             By.XPATH,
-            "//button[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock') or contains(@class, 'operation')][1]"
+            "//button[contains(text(), 'Schema Definition')]/ancestor::div[3]"
         )
 
-    # Ensure content is visible
+    # Ensure content is fully visible
     driver.execute_script("arguments[0].scrollIntoView({block: 'start'});", schema_content)
+    time.sleep(1.5)
+
+    # Zoom back to 100% before taking screenshot for better quality
+    print("Zooming back to 100% for screenshot...")
+    driver.execute_script("document.body.style.zoom='100%'")
     time.sleep(1)
 
     # Take screenshot
@@ -170,7 +182,7 @@ except TimeoutException as e:
 except Exception as e:
     print(f"Error: {e}")
     driver.save_screenshot("error_general.png")
-    print("Full page screenshot saved for debugging")
+    print("Error screenshot saved for debugging")
     
 finally:
     print("Closing browser...")
@@ -180,11 +192,10 @@ finally:
 
 **Key changes:**
 
-1. **Uses `window.scrollBy()`** in addition to scrolling the container - this is more reliable for iframe content
-2. **Increased scroll attempts** to 100 with larger increments (400px)
-3. **Multiple XPath options** to find Schema Definition (button, h3, h4, or any element)
-4. **Better content detection** with multiple fallback XPath expressions
-5. **Debug screenshot** if Schema Definition isn't found
-6. **Handles both expanded and collapsed** schema sections
+1. **Added zoom to 50%** using `document.body.style.zoom='50%'` after switching to iframe
+2. **Wait for zoom to apply** (2 seconds)
+3. **Zoom back to 100%** before taking the screenshot for better image quality
+4. **Increased scroll increment** to 500px since content is zoomed out
+5. **Reduced sleep time** between scrolls to 0.2s for faster execution
 
-If this still doesn't work, the debug screenshot will help identify the exact structure of the page.
+The zoom makes more content visible on screen, which should make the Schema Definition section findable. The screenshot is taken at 100% zoom for better quality.
