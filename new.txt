@@ -1,4 +1,4 @@
-Perfect! You need to zoom out the page first. Here's the updated code that sets the zoom to 50%:
+The issue is that the code is trying to switch to an iframe, but it's likely **failing silently** or the iframe selector is incorrect. Let me create a more robust version that properly debugs and handles the iframe:
 
 ```python
 from selenium import webdriver
@@ -17,185 +17,241 @@ try:
     # Navigate to the URL
     print("Loading page...")
     driver.get("https://developer.cisco.com/meraki/api-v1/create-organization-action-batch/")
-    wait = WebDriverWait(driver, 30)
-    time.sleep(3)  # Wait for page to fully load
-
-    # Wait for and switch to the API documentation iframe
-    print("Switching to iframe...")
-    iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe")))
-    driver.switch_to.frame(iframe)
-    time.sleep(2)
-
-    # Zoom out to 50% to make more content visible
-    print("Zooming out to 50%...")
-    driver.execute_script("document.body.style.zoom='50%'")
-    time.sleep(2)  # Wait for zoom to apply
-
-    # Find the main scrollable content area
-    print("Finding scrollable content area...")
-    scroll_container = None
+    time.sleep(5)  # Give page time to fully load
     
-    selectors = [
-        "div.api-content",
-        "div[class*='ps']",
-        "div.middle-panel",
-        "div[role='main']",
-        "#swagger-ui"
-    ]
+    print("Page loaded successfully")
+    print(f"Current URL: {driver.current_url}")
     
-    for selector in selectors:
+    # Find all iframes on the page
+    print("Looking for iframes...")
+    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+    print(f"Found {len(iframes)} iframe(s)")
+    
+    if len(iframes) == 0:
+        print("No iframe found - working with main page")
+        # Work directly with main page
+        target_driver = driver
+    else:
+        # Switch to the first iframe (or find the correct one)
+        print("Switching to iframe...")
+        wait = WebDriverWait(driver, 30)
+        
+        # Try different methods to switch to iframe
         try:
-            scroll_container = driver.find_element(By.CSS_SELECTOR, selector)
-            print(f"Found scroll container: {selector}")
-            break
-        except:
-            continue
-    
-    if not scroll_container:
-        scroll_container = driver.find_element(By.TAG_NAME, "body")
-        print("Using body as scroll container")
+            # Method 1: Wait for iframe and switch
+            iframe = wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
+            print("✓ Successfully switched to iframe")
+            time.sleep(2)
+        except Exception as e:
+            print(f"Failed to switch to iframe: {e}")
+            # Try switching by index
+            try:
+                driver.switch_to.frame(0)
+                print("✓ Switched to iframe by index")
+                time.sleep(2)
+            except Exception as e2:
+                print(f"Failed to switch by index: {e2}")
+                driver.save_screenshot("iframe_error.png")
+                raise
 
-    # Scroll down to find Schema Definition
-    print("Scrolling to find Schema Definition...")
+    # Zoom out to 50%
+    print("Zooming out to 50%...")
+    try:
+        driver.execute_script("document.body.style.zoom='0.5'")
+        time.sleep(2)
+        print("✓ Zoom applied")
+    except Exception as e:
+        print(f"Zoom failed: {e}")
+        # Try alternative zoom method
+        try:
+            driver.execute_script("document.body.style.transform='scale(0.5)'")
+            driver.execute_script("document.body.style.transformOrigin='0 0'")
+            time.sleep(2)
+            print("✓ Alternative zoom applied")
+        except Exception as e2:
+            print(f"Alternative zoom also failed: {e2}")
+
+    # Take a screenshot to verify zoom worked
+    driver.save_screenshot("after_zoom.png")
+    print("Debug screenshot saved: after_zoom.png")
+
+    # Try to find Schema Definition
+    print("Searching for Schema Definition...")
     schema_found = False
-    max_scrolls = 100
+    max_scrolls = 150
     
     for i in range(max_scrolls):
-        # Try to find Schema Definition button/heading
+        # Multiple XPath strategies to find Schema Definition
+        xpaths = [
+            "//button[contains(text(), 'Schema Definition')]",
+            "//h3[contains(text(), 'Schema Definition')]",
+            "//h4[contains(text(), 'Schema Definition')]",
+            "//span[contains(text(), 'Schema Definition')]",
+            "//*[contains(text(), 'Schema Definition')]",
+            "//button[contains(., 'Schema')]",
+        ]
+        
+        for xpath in xpaths:
+            try:
+                schema_element = driver.find_element(By.XPATH, xpath)
+                if schema_element.is_displayed():
+                    print(f"✓ Found Schema Definition with xpath: {xpath}")
+                    print(f"Found after {i} scroll attempts")
+                    schema_found = True
+                    
+                    # Scroll element into view
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
+                        schema_element
+                    )
+                    time.sleep(2)
+                    break
+            except NoSuchElementException:
+                continue
+        
+        if schema_found:
+            break
+        
+        # Scroll down - try multiple scroll methods
         try:
-            schema_element = driver.find_element(
-                By.XPATH, 
-                "//button[contains(text(), 'Schema Definition')] | //h3[contains(text(), 'Schema Definition')] | //h4[contains(text(), 'Schema Definition')] | //*[contains(text(), 'Schema Definition')]"
-            )
-            
-            if schema_element.is_displayed():
-                print(f"Found Schema Definition after {i} scroll attempts")
-                schema_found = True
-                
-                # Scroll element into view
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
-                    schema_element
-                )
-                time.sleep(1)
-                break
-                
-        except NoSuchElementException:
+            # Method 1: Scroll window
+            driver.execute_script("window.scrollBy(0, 800);")
+        except:
             pass
         
-        # Scroll using JavaScript
-        driver.execute_script("window.scrollBy(0, 500);")
-        time.sleep(0.2)
+        try:
+            # Method 2: Scroll body
+            driver.execute_script("document.body.scrollTop += 800;")
+        except:
+            pass
         
-        # Also scroll the container if found
-        if scroll_container:
-            driver.execute_script("arguments[0].scrollTop += 500;", scroll_container)
+        try:
+            # Method 3: Scroll documentElement
+            driver.execute_script("document.documentElement.scrollTop += 800;")
+        except:
+            pass
         
-        # Check if we've reached the bottom
-        at_bottom = driver.execute_script(
-            "return (window.innerHeight + window.pageYOffset) >= document.body.offsetHeight;"
-        )
-        if at_bottom:
-            print("Reached bottom of page")
-            try:
-                schema_element = driver.find_element(
-                    By.XPATH, 
-                    "//*[contains(text(), 'Schema Definition')]"
-                )
-                schema_found = True
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
-                    schema_element
-                )
-                time.sleep(1)
-                break
-            except:
-                pass
-            break
+        time.sleep(0.3)
+        
+        # Print progress every 10 scrolls
+        if i % 10 == 0:
+            print(f"Scrolled {i} times...")
+            current_position = driver.execute_script("return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;")
+            print(f"Current scroll position: {current_position}px")
 
     if not schema_found:
-        print("Schema Definition not found. Taking debug screenshot...")
-        driver.save_screenshot("debug_zoomed_out.png")
+        print("❌ Schema Definition not found after scrolling")
+        driver.save_screenshot("schema_not_found.png")
+        
+        # Print page source for debugging
+        with open("page_source.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print("Page source saved to page_source.html for inspection")
+        
         raise Exception("Could not find Schema Definition section!")
 
-    # Click to expand if it's a button/accordion
+    # Click to expand if it's a button
+    print("Attempting to click Schema Definition...")
     try:
-        if schema_element.tag_name == "button":
-            print("Clicking Schema Definition button...")
-            # Try regular click first
-            try:
-                schema_element.click()
-            except:
-                # Fallback to JavaScript click
-                driver.execute_script("arguments[0].click();", schema_element)
+        if schema_element.tag_name.lower() == "button":
+            # Try JavaScript click first (more reliable)
+            driver.execute_script("arguments[0].click();", schema_element)
+            print("✓ Clicked with JavaScript")
             time.sleep(2)
+        else:
+            print("Element is not a button, might already be visible")
     except Exception as e:
-        print(f"Element might not be clickable or already expanded: {e}")
+        print(f"Click attempt: {e}")
+        # Try regular click as fallback
+        try:
+            schema_element.click()
+            print("✓ Clicked with regular click")
+            time.sleep(2)
+        except Exception as e2:
+            print(f"Regular click also failed: {e2}")
 
-    # Find the schema content area
-    print("Locating schema content...")
+    # Find the schema content
+    print("Locating schema content area...")
     schema_content = None
     
-    # Try multiple ways to find the schema content
-    content_selectors = [
-        "//button[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'accordion-body')][1]",
-        "//button[contains(text(), 'Schema Definition')]/parent::*/following-sibling::div[1]",
+    content_xpaths = [
+        "//button[contains(text(), 'Schema Definition')]/following-sibling::div[1]",
+        "//button[contains(text(), 'Schema Definition')]/../following-sibling::div[1]",
+        "//button[contains(text(), 'Schema Definition')]/parent::*/following-sibling::*[1]",
+        "//*[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock')][1]",
         "//*[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'model')][1]",
-        "//*[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock-section')][1]",
-        "//button[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock')][1]"
+        "//*[contains(text(), 'Schema Definition')]/following::div[1]",
     ]
     
-    for selector in content_selectors:
+    for xpath in content_xpaths:
         try:
-            schema_content = driver.find_element(By.XPATH, selector)
-            if schema_content.is_displayed() and schema_content.size['height'] > 50:
-                print(f"Found schema content with selector: {selector}")
+            schema_content = driver.find_element(By.XPATH, xpath)
+            if schema_content.is_displayed() and schema_content.size['height'] > 30:
+                print(f"✓ Found schema content with xpath: {xpath}")
                 break
         except:
             continue
     
     if not schema_content:
-        # If still not found, use the schema element's parent container
-        schema_content = driver.find_element(
-            By.XPATH,
-            "//button[contains(text(), 'Schema Definition')]/ancestor::div[3]"
-        )
+        print("Using schema element itself for screenshot")
+        schema_content = schema_element
 
-    # Ensure content is fully visible
+    # Scroll content into view
     driver.execute_script("arguments[0].scrollIntoView({block: 'start'});", schema_content)
-    time.sleep(1.5)
-
-    # Zoom back to 100% before taking screenshot for better quality
-    print("Zooming back to 100% for screenshot...")
-    driver.execute_script("document.body.style.zoom='100%'")
     time.sleep(1)
+
+    # Zoom back to 100% for better screenshot quality
+    print("Zooming back to 100% for screenshot...")
+    try:
+        driver.execute_script("document.body.style.zoom='1.0'")
+        time.sleep(1.5)
+        print("✓ Zoom restored")
+    except Exception as e:
+        print(f"Zoom restore failed: {e}")
+        try:
+            driver.execute_script("document.body.style.transform='scale(1.0)'")
+            time.sleep(1.5)
+        except:
+            pass
 
     # Take screenshot
     print("Taking screenshot...")
-    schema_content.screenshot("schema_definition.png")
-    print("✓ Screenshot saved: schema_definition.png")
+    screenshot_path = "schema_definition.png"
+    schema_content.screenshot(screenshot_path)
+    print(f"✓ Screenshot saved: {screenshot_path}")
+    
+    # Also save full page screenshot for reference
+    driver.save_screenshot("full_page_final.png")
+    print("✓ Full page screenshot saved: full_page_final.png")
 
 except TimeoutException as e:
-    print(f"Timeout error: {e}")
+    print(f"❌ Timeout error: {e}")
     driver.save_screenshot("error_timeout.png")
     
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"❌ Error occurred: {e}")
+    import traceback
+    traceback.print_exc()
     driver.save_screenshot("error_general.png")
-    print("Error screenshot saved for debugging")
     
 finally:
-    print("Closing browser...")
-    time.sleep(2)
+    print("\nClosing browser...")
+    time.sleep(3)
     driver.quit()
+    print("Done!")
 ```
 
-**Key changes:**
+**Key improvements:**
 
-1. **Added zoom to 50%** using `document.body.style.zoom='50%'` after switching to iframe
-2. **Wait for zoom to apply** (2 seconds)
-3. **Zoom back to 100%** before taking the screenshot for better image quality
-4. **Increased scroll increment** to 500px since content is zoomed out
-5. **Reduced sleep time** between scrolls to 0.2s for faster execution
+1. **Debug output at every step** - prints what's happening
+2. **Checks for iframes** - verifies if iframe exists before switching
+3. **Multiple iframe switching methods** - tries different approaches
+4. **Multiple scroll methods** - tries window, body, and documentElement scrolling
+5. **Progress tracking** - prints scroll position every 10 attempts
+6. **Saves debug screenshots** - after zoom, if schema not found, and final result
+7. **Saves page source** - if schema not found, saves HTML for inspection
+8. **Multiple XPath strategies** - tries various ways to find Schema Definition
+9. **Increased scroll distance** - 800px per scroll since zoomed to 50%
+10. **Exception handling with traceback** - shows full error details
 
-The zoom makes more content visible on screen, which should make the Schema Definition section findable. The screenshot is taken at 100% zoom for better quality.
+Run this version and check the console output. It will tell you exactly where it's failing and save multiple debug files to help identify the issue.
