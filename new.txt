@@ -1,0 +1,190 @@
+I see the issue. The page has loaded but the code needs to scroll within the **iframe's content area** to find the Schema Definition section. Looking at your screenshot, I can see the page is showing the "Request Parameters" section, but we need to scroll down further to reach "Schema Definition."
+
+Here's a revised version that should work better:
+
+```python
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import time
+
+# Initialize Firefox driver
+driver = webdriver.Firefox(service=Service("C:\\WebDrivers\\geckodriver.exe"))
+driver.maximize_window()
+
+try:
+    # Navigate to the URL
+    print("Loading page...")
+    driver.get("https://developer.cisco.com/meraki/api-v1/create-organization-action-batch/")
+    wait = WebDriverWait(driver, 30)
+    time.sleep(3)  # Wait for page to fully load
+
+    # Wait for and switch to the API documentation iframe
+    print("Switching to iframe...")
+    iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe")))
+    driver.switch_to.frame(iframe)
+    time.sleep(2)
+
+    # Find the main scrollable content area (the center panel with API docs)
+    print("Finding scrollable content area...")
+    scroll_container = None
+    
+    # Try different selectors for the scrollable area
+    selectors = [
+        "div.api-content",
+        "div[class*='ps']",
+        "div.middle-panel",
+        "div[role='main']",
+        "#swagger-ui"
+    ]
+    
+    for selector in selectors:
+        try:
+            scroll_container = driver.find_element(By.CSS_SELECTOR, selector)
+            print(f"Found scroll container: {selector}")
+            break
+        except:
+            continue
+    
+    # If no specific container found, use the body or a general div
+    if not scroll_container:
+        try:
+            scroll_container = driver.find_element(By.TAG_NAME, "body")
+            print("Using body as scroll container")
+        except:
+            # Last resort: find any scrollable div
+            scroll_container = driver.find_element(By.XPATH, "//div[@style[contains(., 'overflow')]]")
+
+    # Scroll down to find Schema Definition
+    print("Scrolling to find Schema Definition...")
+    schema_found = False
+    max_scrolls = 100
+    
+    for i in range(max_scrolls):
+        # Try to find Schema Definition button/heading
+        try:
+            schema_element = driver.find_element(
+                By.XPATH, 
+                "//button[contains(text(), 'Schema Definition')] | //h3[contains(text(), 'Schema Definition')] | //h4[contains(text(), 'Schema Definition')]"
+            )
+            
+            if schema_element.is_displayed():
+                print(f"Found Schema Definition after {i} scroll attempts")
+                schema_found = True
+                
+                # Scroll element into view
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
+                    schema_element
+                )
+                time.sleep(1)
+                break
+                
+        except NoSuchElementException:
+            pass
+        
+        # Scroll using JavaScript - scroll the window/body
+        driver.execute_script("window.scrollBy(0, 400);")
+        time.sleep(0.3)
+        
+        # Also try scrolling the container if found
+        if scroll_container:
+            driver.execute_script("arguments[0].scrollTop += 400;", scroll_container)
+        
+        # Check if we've reached the bottom
+        at_bottom = driver.execute_script(
+            "return (window.innerHeight + window.pageYOffset) >= document.body.offsetHeight;"
+        )
+        if at_bottom:
+            print("Reached bottom of page")
+            # Try one more time to find the element
+            try:
+                schema_element = driver.find_element(
+                    By.XPATH, 
+                    "//button[contains(text(), 'Schema Definition')] | //*[contains(text(), 'Schema Definition')]"
+                )
+                schema_found = True
+                break
+            except:
+                pass
+            break
+
+    if not schema_found:
+        print("Schema Definition not found. Taking full page screenshot for debugging...")
+        driver.save_screenshot("debug_full_page.png")
+        raise Exception("Could not find Schema Definition section!")
+
+    # Click to expand if it's a button/accordion
+    try:
+        if schema_element.tag_name == "button":
+            print("Clicking Schema Definition button...")
+            schema_element.click()
+            time.sleep(1.5)
+    except Exception as e:
+        print(f"Element might not be clickable or already expanded: {e}")
+
+    # Find the schema content area
+    print("Locating schema content...")
+    schema_content = None
+    
+    # Try multiple ways to find the schema content
+    content_selectors = [
+        "//button[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'accordion')][1]",
+        "//button[contains(text(), 'Schema Definition')]/parent::*/following-sibling::div[1]",
+        "//*[contains(text(), 'Schema Definition')]/following::div[contains(@class, 'model-box')][1]",
+        "//*[contains(text(), 'Schema Definition')]/following::div[1]"
+    ]
+    
+    for selector in content_selectors:
+        try:
+            schema_content = driver.find_element(By.XPATH, selector)
+            if schema_content.is_displayed():
+                print(f"Found schema content with selector: {selector}")
+                break
+        except:
+            continue
+    
+    if not schema_content:
+        # If still not found, try to get a larger area around the Schema Definition
+        schema_content = driver.find_element(
+            By.XPATH,
+            "//button[contains(text(), 'Schema Definition')]/ancestor::div[contains(@class, 'opblock') or contains(@class, 'operation')][1]"
+        )
+
+    # Ensure content is visible
+    driver.execute_script("arguments[0].scrollIntoView({block: 'start'});", schema_content)
+    time.sleep(1)
+
+    # Take screenshot
+    print("Taking screenshot...")
+    schema_content.screenshot("schema_definition.png")
+    print("✓ Screenshot saved: schema_definition.png")
+
+except TimeoutException as e:
+    print(f"Timeout error: {e}")
+    driver.save_screenshot("error_timeout.png")
+    
+except Exception as e:
+    print(f"Error: {e}")
+    driver.save_screenshot("error_general.png")
+    print("Full page screenshot saved for debugging")
+    
+finally:
+    print("Closing browser...")
+    time.sleep(2)
+    driver.quit()
+```
+
+**Key changes:**
+
+1. **Uses `window.scrollBy()`** in addition to scrolling the container - this is more reliable for iframe content
+2. **Increased scroll attempts** to 100 with larger increments (400px)
+3. **Multiple XPath options** to find Schema Definition (button, h3, h4, or any element)
+4. **Better content detection** with multiple fallback XPath expressions
+5. **Debug screenshot** if Schema Definition isn't found
+6. **Handles both expanded and collapsed** schema sections
+
+If this still doesn't work, the debug screenshot will help identify the exact structure of the page.
