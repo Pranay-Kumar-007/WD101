@@ -1,133 +1,280 @@
-from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-import time
+"""
+Playwright script to navigate to Cisco Meraki API documentation,
+click on the schema definition, and take a screenshot of it.
 
-# Initialize Firefox driver
-driver = webdriver.Firefox(service=Service("C:\\WebDrivers\\geckodriver.exe"))
-driver.maximize_window()
+Requirements:
+    pip install playwright
+    playwright install chromium
 
-try:
-    # Navigate to the URL
-    print("Loading page...")
-    driver.get("https://developer.cisco.com/meraki/api-v1/create-organization-action-batch/")
-    wait = WebDriverWait(driver, 30)
+Usage:
+    python screenshot_schema.py
+"""
 
-    # Wait for and switch to the API documentation iframe
-    print("Switching to iframe...")
-    iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe")))
-    driver.switch_to.frame(iframe)
-    time.sleep(1)  # Give iframe content time to load
+import asyncio
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-    # Try multiple possible selectors for the scrollable container
-    scroll_div = None
-    possible_selectors = [
-        "div.ps > div",
-        "div.ps",
-        "div[class*='scroll']",
-        "div.api-content",
-        "body"
-    ]
-    
-    for selector in possible_selectors:
+
+async def capture_schema_screenshot():
+    """
+    Navigate to the Meraki API documentation page, click on schema definition,
+    and capture a screenshot of the entire schema.
+    """
+    async with async_playwright() as p:
+        # Launch browser - set headless=False to see the browser in action
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1920, "height": 1080}
+        )
+        page = await context.new_page()
+
+        url = "https://developer.cisco.com/meraki/api-v1/create-organization-action-batch/"
+
+        print(f"Navigating to: {url}")
+        
         try:
-            scroll_div = driver.find_element(By.CSS_SELECTOR, selector)
-            print(f"Found scrollable element: {selector}")
-            break
-        except NoSuchElementException:
-            continue
-    
-    if not scroll_div:
-        scroll_div = driver.find_element(By.TAG_NAME, "body")
-        print("Using body as fallback scroll element")
+            await page.goto(url, wait_until="networkidle", timeout=60000)
+        except PlaywrightTimeout:
+            print("Page load timed out, continuing anyway...")
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-    # Scroll to find Schema Definition button
-    print("Searching for Schema Definition button...")
-    schema_button = None
-    max_scrolls = 50
-    scroll_increment = 300
-    
-    for scroll_attempt in range(max_scrolls):
-        try:
-            # Try to find the button
-            schema_button = driver.find_element(
-                By.XPATH, "//button[contains(text(), 'Schema Definition') or contains(@aria-label, 'Schema Definition')]"
-            )
+        # Wait for the page content to fully render
+        print("Waiting for page to fully render...")
+        await page.wait_for_timeout(5000)
+
+        # Take an initial screenshot of the page
+        print("Taking initial screenshot...")
+        await page.screenshot(path="initial_page.png", full_page=True)
+
+        # Scroll down to find the schema definition section
+        print("Scrolling to find schema definition...")
+        
+        # Common selectors for schema definition in Cisco DevNet API docs
+        schema_selectors = [
+            # DevNet specific selectors
+            "text=Schema Definition",
+            "button:has-text('Schema')",
+            "[data-testid='schema-toggle']",
+            "summary:has-text('Schema')",
+            ".schema-definition",
+            "[class*='schema-toggle']",
+            "[class*='schema-definition']",
             
-            # Check if button is in viewport
-            if schema_button.is_displayed():
-                print(f"Found Schema Definition button after {scroll_attempt} scrolls")
-                # Scroll button into view smoothly
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", 
-                    schema_button
-                )
-                time.sleep(0.5)
+            # Generic API doc patterns
+            "details:has-text('Schema')",
+            "[aria-label*='Schema']",
+            "text=Response Schema",
+            "text=Request Schema",
+            
+            # Expandable/collapsible patterns
+            "[class*='expand']:has-text('Schema')",
+            "[class*='collapse']:has-text('Schema')",
+            ".toggle-schema",
+            
+            # Response section patterns
+            "[class*='response'] summary",
+            "[class*='response-schema']",
+        ]
+
+        schema_found = False
+        
+        # First, scroll down the page to make schema visible
+        for scroll_position in range(0, 5000, 500):
+            await page.evaluate(f"window.scrollTo(0, {scroll_position})")
+            await page.wait_for_timeout(300)
+            
+            # Check for schema definition at each scroll position
+            for selector in schema_selectors:
+                try:
+                    element = await page.query_selector(selector)
+                    if element and await element.is_visible():
+                        print(f"Found schema element with selector: {selector}")
+                        
+                        # Scroll element into view
+                        await element.scroll_into_view_if_needed()
+                        await page.wait_for_timeout(500)
+                        
+                        # Click to expand if it's a toggle/expandable element
+                        tag_name = await element.evaluate("el => el.tagName.toLowerCase()")
+                        is_expanded = await element.get_attribute("aria-expanded")
+                        
+                        if tag_name in ["button", "summary", "details"] or is_expanded == "false":
+                            print("Clicking to expand schema...")
+                            await element.click()
+                            await page.wait_for_timeout(2000)
+                        
+                        schema_found = True
+                        break
+                except Exception as e:
+                    continue
+            
+            if schema_found:
                 break
-        except NoSuchElementException:
-            pass
+
+        # If schema not found with specific selectors, try text-based search
+        if not schema_found:
+            print("Trying text-based search for 'Schema'...")
+            
+            # Look for any clickable element containing "Schema"
+            clickable_elements = await page.query_selector_all("button, summary, a, [role='button']")
+            
+            for element in clickable_elements:
+                try:
+                    text = await element.inner_text()
+                    if text and "schema" in text.lower():
+                        print(f"Found clickable schema element: {text[:50]}...")
+                        await element.scroll_into_view_if_needed()
+                        await page.wait_for_timeout(500)
+                        await element.click()
+                        await page.wait_for_timeout(2000)
+                        schema_found = True
+                        break
+                except:
+                    continue
+
+        # Additional wait for any animations to complete
+        await page.wait_for_timeout(2000)
+
+        # Now try to find the expanded schema content
+        print("Looking for expanded schema content...")
         
-        # Scroll down incrementally
-        current_scroll = driver.execute_script("return arguments[0].scrollTop;", scroll_div)
-        driver.execute_script(f"arguments[0].scrollTop = {current_scroll + scroll_increment};", scroll_div)
-        time.sleep(0.3)
+        schema_content_selectors = [
+            "[class*='schema-content']",
+            "[class*='schema-body']",
+            "[class*='model-container']",
+            ".json-schema",
+            "[class*='response-schema']",
+            "pre:has-text('type')",
+            "[class*='properties']",
+            "details[open]",
+        ]
+
+        schema_container = None
         
-        # Check if we've reached the bottom
-        new_scroll = driver.execute_script("return arguments[0].scrollTop;", scroll_div)
-        if new_scroll == current_scroll:
-            print("Reached bottom of page")
-            break
+        for selector in schema_content_selectors:
+            try:
+                element = await page.query_selector(selector)
+                if element and await element.is_visible():
+                    schema_container = element
+                    print(f"Found schema content with selector: {selector}")
+                    break
+            except:
+                continue
 
-    if not schema_button:
-        raise Exception("Could not find Schema Definition button after scrolling entire page!")
+        # Take full page screenshot with schema expanded
+        print("Taking full page screenshot with schema expanded...")
+        await page.screenshot(path="schema_fullpage.png", full_page=True)
 
-    # Click the Schema Definition button to expand accordion
-    print("Clicking Schema Definition button...")
-    try:
-        schema_button.click()
-    except:
-        # If regular click fails, try JavaScript click
-        driver.execute_script("arguments[0].click();", schema_button)
-    
-    time.sleep(1)
+        # If we found a specific schema container, screenshot just that
+        if schema_container:
+            print("Taking screenshot of schema definition section...")
+            
+            # Get bounding box to check size
+            bounding_box = await schema_container.bounding_box()
+            if bounding_box:
+                print(f"Schema container size: {bounding_box['width']}x{bounding_box['height']}")
+            
+            await schema_container.screenshot(path="schema_definition.png")
+            print("Schema definition screenshot saved: schema_definition.png")
+        else:
+            print("Could not find specific schema container, using full page screenshot")
+            
+            # Try to screenshot the main content area instead
+            main_content = await page.query_selector("main, [role='main'], .main-content, article")
+            if main_content:
+                await main_content.screenshot(path="schema_definition.png")
+                print("Main content screenshot saved: schema_definition.png")
 
-    # Wait for the accordion content to expand and become visible
-    print("Waiting for schema content to expand...")
-    schema_content = wait.until(
-        EC.visibility_of_element_located((By.CSS_SELECTOR, ".accordion-body, div[class*='accordion'] div[class*='body']"))
-    )
-    
-    # Additional wait to ensure content is fully rendered
-    time.sleep(1.5)
-    
-    # Scroll the schema content into view if needed
-    driver.execute_script(
-        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'start'});", 
-        schema_content
-    )
-    time.sleep(0.5)
+        # Also capture a viewport screenshot centered on the schema
+        print("Taking viewport screenshot...")
+        await page.screenshot(path="schema_viewport.png")
 
-    # Take screenshot of the schema section
-    print("Taking screenshot...")
-    screenshot_path = "schema_definition.png"
-    schema_content.screenshot(screenshot_path)
-    print(f"✓ Screenshot saved successfully: {screenshot_path}")
+        print("\n" + "="*50)
+        print("Screenshots saved:")
+        print("  - initial_page.png (initial page state)")
+        print("  - schema_fullpage.png (full page with schema)")
+        print("  - schema_definition.png (schema definition section)")
+        print("  - schema_viewport.png (current viewport)")
+        print("="*50)
 
-except TimeoutException as e:
-    print(f"Timeout error: {e}")
-    driver.save_screenshot("error_timeout.png")
-    print("Error screenshot saved: error_timeout.png")
+        await browser.close()
+
+
+async def capture_schema_screenshot_alternative():
+    """
+    Alternative approach using a more aggressive method to find and capture schema.
+    This version uses JavaScript evaluation to find schema elements.
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(viewport={"width": 1920, "height": 1080})
+        page = await context.new_page()
+
+        url = "https://developer.cisco.com/meraki/api-v1/create-organization-action-batch/"
+
+        print(f"Navigating to: {url}")
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(5000)
+
+        # Use JavaScript to find and click all schema-related expandable elements
+        print("Using JavaScript to find and expand schema elements...")
+        
+        await page.evaluate("""
+            () => {
+                // Find all elements that might be schema toggles
+                const schemaPatterns = ['schema', 'Schema', 'SCHEMA'];
+                const clickableElements = document.querySelectorAll('button, summary, [role="button"], details');
+                
+                clickableElements.forEach(el => {
+                    const text = el.textContent || el.innerText || '';
+                    if (schemaPatterns.some(pattern => text.includes(pattern))) {
+                        // If it's a details element, set it to open
+                        if (el.tagName.toLowerCase() === 'details') {
+                            el.open = true;
+                        } else {
+                            // Try to click it
+                            el.click();
+                        }
+                    }
+                });
+                
+                // Also expand any collapsed sections that might contain schema
+                document.querySelectorAll('details').forEach(details => {
+                    if (!details.open) {
+                        const text = details.textContent || '';
+                        if (schemaPatterns.some(pattern => text.toLowerCase().includes(pattern.toLowerCase()))) {
+                            details.open = true;
+                        }
+                    }
+                });
+            }
+        """)
+
+        await page.wait_for_timeout(3000)
+
+        # Scroll to make sure schema is in view
+        await page.evaluate("""
+            () => {
+                const schemaElement = document.querySelector('[class*="schema"], [id*="schema"]');
+                if (schemaElement) {
+                    schemaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        """)
+
+        await page.wait_for_timeout(2000)
+
+        # Take screenshots
+        print("Taking screenshots...")
+        await page.screenshot(path="schema_fullpage_alt.png", full_page=True)
+        await page.screenshot(path="schema_viewport_alt.png")
+
+        print("Alternative screenshots saved!")
+        await browser.close()
+
+
+if __name__ == "__main__":
+    print("Running main capture method...")
+    asyncio.run(capture_schema_screenshot())
     
-except Exception as e:
-    print(f"An error occurred: {e}")
-    driver.save_screenshot("error_general.png")
-    print("Error screenshot saved: error_general.png")
-    
-finally:
-    print("Closing browser...")
-    time.sleep(2)
-    driver.quit()
-    print("Done!")
+    print("\nRunning alternative capture method...")
+    asyncio.run(capture_schema_screenshot_alternative())
