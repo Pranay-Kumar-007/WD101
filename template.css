@@ -1,0 +1,59 @@
+body {
+  font-family: Calibri, Arial, sans-serif;
+  background: #f4f4f4;
+  padding: 20px;
+}
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  background: #ffffff;
+  border: 1px solid #ccc;
+}
+
+.top-header {
+  background: #f4a261;
+  color: #000;
+  font-weight: bold;
+  padding: 10px;
+  border-bottom: 2px solid #000;
+}
+
+.incident-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.incident-table td {
+  border: 1px solid #999;
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.label {
+  width: 30%;
+  font-weight: bold;
+  background: #f2f2f2;
+}
+
+.section-header td {
+  background: #6d6d6d;
+  color: #ffffff;
+  font-weight: bold;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.center {
+  text-align: center;
+  font-weight: bold;
+}
+
+.highlight {
+  color: #c00000;
+  font-weight: bold;
+}
+
+.highlight-text {
+  color: #c00000;
+}
