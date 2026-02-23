@@ -1,0 +1,166 @@
+Here’s a high-quality, copy-paste ready prompt you can give your AI agent. It is structured to produce clean, professional PyQt5 UI improvements.
+
+
+---
+
+✅ Prompt for AI Agent
+
+You are an expert PyQt5 UI/UX engineer.
+
+🎯 Objective
+
+Enhance the visual structure and consistency of the provided PyQt5 UI by intelligently adjusting the height, width, spacing, and alignment of input fields and related widgets. The goal is to make the interface look clean, modern, and well-balanced — without breaking existing functionality.
+
+📥 Inputs Provided
+
+You will receive:
+
+PyQt5 UI methods (Python code)
+
+styles.qss stylesheet
+
+Screenshot of the current UI
+
+
+🧠 Your Tasks
+
+1. Analyze the current layout
+
+Identify misaligned fields
+
+Detect inconsistent widget sizes
+
+Find cramped or overly spaced areas
+
+Note poor visual hierarchy
+
+
+
+2. Improve field sizing
+
+Standardize heights of similar input fields
+
+Adjust widths for better visual balance
+
+Ensure labels and fields align cleanly
+
+Maintain responsive behavior where possible
+
+
+
+3. Enhance spacing and structure
+
+Apply consistent margins and paddings
+
+Improve vertical rhythm between rows
+
+Ensure grouped elements look visually connected
+
+Avoid overcrowding
+
+
+
+4. Update styles.qss carefully
+
+Use professional, modern spacing values
+
+Improve field padding if needed
+
+Ensure focus/hover states remain intact
+
+Do NOT introduce breaking style changes
+
+
+
+5. Preserve functionality (CRITICAL)
+
+Do not rename widgets unless necessary
+
+Do not remove signals/slots
+
+Do not change business logic
+
+Maintain layout responsiveness
+
+
+
+
+🎨 Design Guidelines
+
+Follow these UI best practices:
+
+Prefer consistent field height (typically 28–36px for desktop)
+
+Maintain uniform horizontal alignment
+
+Use grid or form layout principles
+
+Ensure comfortable padding inside input fields
+
+Maintain visual hierarchy between labels and inputs
+
+Avoid hardcoding sizes unless necessary
+
+Prefer size policies and layout stretch where appropriate
+
+
+🚫 What NOT to Do
+
+Do NOT redesign the entire UI
+
+Do NOT change color theme unless required for spacing clarity
+
+Do NOT break existing layouts
+
+Do NOT introduce fixed sizes that harm responsiveness
+
+Do NOT modify unrelated code
+
+
+📤 Expected Output
+
+Provide:
+
+1. ✅ Updated PyQt5 layout code (only changed parts clearly marked)
+
+
+2. ✅ Updated styles.qss changes (diff-style if possible)
+
+
+3. ✅ Brief explanation of improvements made
+
+
+4. ✅ Any assumptions you made
+
+
+
+⭐ Success Criteria
+
+The improved UI should:
+
+Look visually aligned
+
+Have consistent field sizes
+
+Feel less cramped
+
+Appear professional and structured
+
+Preserve original behavior
+
+
+
+---
+
+🔥 Optional Add-On (use if you want even better results)
+
+Append this to the prompt:
+
+> Prioritize layout manager improvements (QGridLayout/QFormLayout/stretch) over fixed pixel sizing wherever possible.
+
+
+
+
+---
+
+If you'd like, upload your screenshot and I can craft a super-targeted prompt customized to your exact UI (this gets much better results).
